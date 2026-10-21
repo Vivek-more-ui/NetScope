@@ -59,6 +59,24 @@ class NormalizedPacket(BaseModel):
     ip_version: Optional[int] = Field(default=None, ge=4, le=6)
     direction_hint: Literal["outbound", "inbound", "unknown"] = "unknown"
 
+    # Optional honesty extras (contract v1.1). They never replace the fields above;
+    # they explain how the classification was reached so the UI can show uncertainty.
+    detected_protocol: Optional[str] = Field(
+        default=None, description="Raw protocol name reported by the dissector, if any"
+    )
+    protocol_confidence: Optional[str] = Field(
+        default=None, description="How certain the application protocol is: high | medium | low | unknown"
+    )
+    protocol_evidence: list[str] = Field(
+        default_factory=list, description="Short reasons that produced the application protocol"
+    )
+    quic_version: Optional[str] = Field(default=None, description="QUIC version when observed")
+    timestamp_has_date: bool = Field(
+        default=True,
+        description="False when the source only carried a time of day, so no date was invented",
+    )
+
+
 
 class ProtocolCount(BaseModel):
     protocol: str

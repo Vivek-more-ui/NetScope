@@ -37,7 +37,23 @@ the payload.
 | `ip_version` | integer | 4, 6, or null | yes | IP version, `null` for non-IP frames. |
 | `direction_hint` | string | `outbound`, `inbound`, `unknown` | no | Best-effort direction relative to the capture host. Never claimed as ground truth. |
 
-### 1.1 Honesty rules (non-negotiable)
+### 1.1 Optional honesty extras (contract v1.1)
+
+These fields are additive. They never replace a field above; they explain how the
+classification was reached, so the UI can show uncertainty instead of hiding it.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `detected_protocol` | string | Raw protocol name the dissector reported, if any. |
+| `protocol_confidence` | string | `high`, `medium`, `low` or `unknown`. |
+| `protocol_evidence` | array of strings | Short reasons that produced `application_protocol` (e.g. `"http.request.method observed"`). |
+| `quic_version` | string | QUIC version, when observed. |
+| `timestamp_has_date` | boolean | `false` when the source only carried a time of day, so no calendar date was invented. |
+
+A client that does not know these fields must ignore them. A server that cannot
+produce them may omit them; they are never required.
+
+### 1.2 Honesty rules (non-negotiable)
 
 1. A packet is **never** reported as HTTP unless an HTTP request line or status line was
    actually observed in the payload.

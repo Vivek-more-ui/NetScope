@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Analyzer runtime data
+backend/data/
+*.pcap
+*.pcapng
+*.cap
+!backend/tests/fixtures/*.pcap
+!backend/tests/fixtures/*.pcapng
+
+# Editors / OS
+.DS_Store
+*.log
+.idea/
+.vscode/

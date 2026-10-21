@@ -1,0 +1,8 @@
+{
+  "name": "Seminar Information Bot",
+  "description": "AI-Powered Seminar Discovery, Management, and Assistant Platform for Colleges and Universities",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

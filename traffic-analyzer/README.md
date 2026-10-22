@@ -41,7 +41,7 @@ traffic-analyzer/
 │   │       ├── tshark.py        # TShark / dumpcap adapter and process manager
 │   │       ├── csv_ingest.py    # Wireshark CSV import adapter
 │   │       └── store.py         # In-memory and persistent JSONL analysis store
-│   └── tests/                   # 264 unit, contract, E2E, and security tests
+│   └── tests/                   # 322 unit, contract, E2E and security tests
 ├── frontend/
 │   ├── src/
 │   │   ├── components/          # CapturePanel, ImportPanel, SummaryView, ChartsSection, PacketExplorer, ExportBar

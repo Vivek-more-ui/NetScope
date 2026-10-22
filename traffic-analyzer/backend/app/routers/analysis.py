@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from starlette.responses import Response
 
-from ..config import MAX_UPLOAD_BYTES, UPLOADS_DIR
+from ..config import MAX_UPLOAD_BYTES, SAMPLE_CAPTURES_DIR, UPLOADS_DIR
 from ..models.packet import (
     AnalysisUploadResult,
     CaptureSummary,
@@ -24,6 +24,8 @@ from ..models.packet import (
     NormalizedPacket,
     PacketPage,
     ProtocolPage,
+    SampleInfo,
+    SamplePage,
 )
 from ..services import pipeline, stats
 from ..services.pipeline import CaptureNotReadable, detect_source_kind, store_upload
@@ -157,6 +159,83 @@ def _get_analysis_or_404(analysis_id: str) -> Analysis:
             detail={"message": f"Analysis '{analysis_id}' does not exist.", "analysis_id": analysis_id},
         )
     return analysis
+
+
+# Sample captures that ship with the project. The "Try sample" button in the UI
+# analyses one of them, so a beginner can see the full workflow without having a
+# capture file at hand.
+SAMPLE_DESCRIPTIONS = {
+    "demo_traffic.pcap": "A tiny synthetic capture with an HTTP request, an HTTP response and a DNS query.",
+    "sample_real_traffic.pcapng": (
+        "A real capture of 1 150 packets taken from a home network: plaintext HTTP, "
+        "TLS with a server name, DNS and bulk TCP traffic."
+    ),
+    "demo_traffic.csv": "The same tiny capture in CSV form, to show the spreadsheet import.",
+}
+
+
+@router.get("/samples", response_model=SamplePage)
+async def list_samples() -> SamplePage:
+    """List the sample captures that ship with the project."""
+    samples: list[SampleInfo] = []
+    if SAMPLE_CAPTURES_DIR.is_dir():
+        for path in sorted(SAMPLE_CAPTURES_DIR.iterdir()):
+            if path.suffix.lower() not in {".pcap", ".pcapng", ".cap", ".csv"}:
+                continue
+            samples.append(
+                SampleInfo(
+                    name=path.name,
+                    description=SAMPLE_DESCRIPTIONS.get(path.name, "A sample capture."),
+                    size_bytes=path.stat().st_size,
+                    kind=path.suffix.lstrip(".").lower(),
+                )
+            )
+    return SamplePage(samples=samples, count=len(samples))
+
+
+@router.post("/samples/{name}", response_model=AnalysisUploadResult, status_code=201)
+async def analyse_sample(name: str) -> AnalysisUploadResult:
+    """Analyse one of the bundled sample captures and return the analysis."""
+    safe_name = Path(name).name
+    if safe_name != name or "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Invalid sample name.", "name": name},
+        )
+    path = SAMPLE_CAPTURES_DIR / safe_name
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail={"message": f"The sample '{safe_name}' does not exist.", "name": safe_name},
+        )
+    try:
+        result = pipeline.load_any(path)
+    except CaptureNotReadable as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"The sample '{safe_name}' could not be read: {exc}", "name": safe_name},
+        ) from exc
+
+    analysis = Analysis(
+        analysis_id=new_analysis_id(),
+        source_file=safe_name,
+        source_kind=result.source_kind,
+        created_at=utc_now_iso(),
+        packets=result.packets,
+        warnings=result.warnings,
+        source_path=str(path),
+    )
+    store.put(analysis)
+    return AnalysisUploadResult(
+        analysis_id=analysis.analysis_id,
+        status="complete",
+        source_file=safe_name,
+        source_kind=result.source_kind,
+        packet_count=len(result.packets),
+        total_bytes=result.total_bytes,
+        warnings=result.warnings,
+        created_at=analysis.created_at,
+    )
 
 
 @router.get("/{analysis_id}/summary", response_model=CaptureSummary)

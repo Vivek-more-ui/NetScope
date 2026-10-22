@@ -135,6 +135,43 @@ class TestStartAndStop:
         capture_file.unlink(missing_ok=True)
 
 
+class TestSampleCaptures:
+    """The "Try sample" path: a beginner must be able to see the full workflow."""
+
+    def test_samples_are_listed_with_a_description(self, client):
+        response = client.get("/api/analysis/samples")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["count"] == len(body["samples"])
+        assert body["count"] >= 1
+        for sample in body["samples"]:
+            assert sample["name"]
+            assert sample["description"]
+            assert sample["size_bytes"] >= 0
+
+    def test_a_sample_can_be_analysed_with_one_call(self, client):
+        samples = client.get("/api/analysis/samples").json()["samples"]
+        name = samples[0]["name"]
+        response = client.post(f"/api/analysis/samples/{name}")
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert body["source_file"] == name
+        assert body["packet_count"] >= 0
+
+        summary = client.get(f"/api/analysis/{body['analysis_id']}/summary")
+        assert summary.status_code == 200
+        assert summary.json()["packet_count"] == body["packet_count"]
+
+    def test_an_unknown_sample_is_404(self, client):
+        response = client.post("/api/analysis/samples/does-not-exist.pcap")
+        assert response.status_code == 404, response.text
+
+    def test_a_sample_name_cannot_escape_the_sample_folder(self, client):
+        response = client.post("/api/analysis/samples/..%2F..%2Fetc%2Fpasswd")
+        assert response.status_code in (400, 404), response.text
+        assert ABSOLUTE_PATH.search(response.text) is None
+
+
 class TestNoInternalDetailLeaks:
     def test_errors_never_contain_a_traceback(self, client):
         for path, method, payload in (

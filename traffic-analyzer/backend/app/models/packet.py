@@ -190,6 +190,20 @@ class AnalysisUploadResult(BaseModel):
     created_at: str
 
 
+class SampleInfo(BaseModel):
+    """One sample capture that ships with the project."""
+
+    name: str
+    description: str = ""
+    size_bytes: int = Field(..., ge=0)
+    kind: str = "pcap"
+
+
+class SamplePage(BaseModel):
+    samples: list[SampleInfo] = Field(default_factory=list)
+    count: int = Field(..., ge=0)
+
+
 class TSharkInfo(BaseModel):
     available: bool
     path: Optional[str] = None

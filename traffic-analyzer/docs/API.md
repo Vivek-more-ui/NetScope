@@ -258,6 +258,31 @@ Response: `{ "items": [ { "ip": "10.0.0.5", "packets": 120, "bytes_sent": 8000, 
 * `application/json`, `Content-Disposition: attachment; filename="summary-<id>.json"`.
 * Body: the full `CaptureSummary` plus `"analysis_id"`.
 
+### `GET /api/analysis/samples`
+
+Lists the sample captures that ship with the project, so the UI can offer a
+"Try sample" button that works without the user having a capture file.
+
+```json
+{
+  "samples": [
+    {
+      "name": "sample_real_traffic.pcapng",
+      "description": "A real capture of 1 150 packets taken from a home network: plaintext HTTP, TLS with a server name, DNS and bulk TCP traffic.",
+      "size_bytes": 1118620,
+      "kind": "pcapng"
+    }
+  ],
+  "count": 1
+}
+```
+
+### `POST /api/analysis/samples/{name}`
+
+Analyses one of the bundled samples and returns the same body as
+`POST /api/analysis/upload` (`AnalysisUploadResult`, HTTP 201). An unknown name is
+`404`; a name that tries to escape the sample folder is rejected.
+
 ## 4. Route summary
 
 | Method | Path | Purpose |
@@ -267,6 +292,8 @@ Response: `{ "items": [ { "ip": "10.0.0.5", "packets": 120, "bytes_sent": 8000, 
 | GET | `/api/capture/interfaces` | List capture interfaces. |
 | POST | `/api/capture/start` | Start a live capture. |
 | POST | `/api/capture/stop` | Stop the live capture and analyse it. |
+| GET | `/api/analysis/samples` | List the bundled sample captures. |
+| POST | `/api/analysis/samples/{name}` | Analyse a bundled sample capture. |
 | POST | `/api/analysis/upload` | Upload a pcap/pcapng/CSV and analyse it. |
 | GET | `/api/analysis/{id}/summary` | Capture summary statistics. |
 | GET | `/api/analysis/{id}/packets` | Paginated, filterable packet table. |

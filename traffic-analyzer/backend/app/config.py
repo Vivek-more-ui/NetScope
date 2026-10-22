@@ -21,6 +21,11 @@ ANALYSES_DIR = DATA_DIR / "analyses"
 CAPTURES_DIR = DATA_DIR / "captures"
 UPLOADS_DIR = DATA_DIR / "uploads"
 
+# Sample captures that ship with the project, used by the "Try sample" button.
+SAMPLE_CAPTURES_DIR = Path(
+    os.environ.get("TRAFFIC_ANALYZER_SAMPLES_DIR", BASE_DIR.parent / "sample_captures")
+)
+
 HOST = os.environ.get("TRAFFIC_ANALYZER_HOST", "0.0.0.0")
 PORT = int(os.environ.get("TRAFFIC_ANALYZER_PORT", "8000"))
 

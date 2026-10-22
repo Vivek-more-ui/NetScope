@@ -45,7 +45,7 @@ def _parse_time(val: str, prev_epoch: Optional[float] = None) -> tuple[str, floa
 def load_csv(path: str | Path) -> tuple[list[NormalizedPacket], list[str]]:
     file_path = Path(path)
     if not file_path.is_file():
-        raise FileNotFoundError(f"CSV file not found: {file_path}")
+        raise FileNotFoundError(f"CSV file not found: {file_path.name}")
 
     content = file_path.read_text(encoding="utf-8", errors="replace")
     lines = [line.strip() for line in content.splitlines() if line.strip()]

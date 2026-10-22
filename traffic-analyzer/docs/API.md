@@ -77,6 +77,10 @@ error: offline analysis still works, live capture does not.
 }
 ```
 
+`capture_file` is the **file name only** — absolute paths never leave the backend. The
+endpoint never answers with a 500: if the packet counter fails, the last known count is
+reported and `last_error` explains why.
+
 ### `GET /api/capture/interfaces`
 
 ```json
@@ -85,12 +89,15 @@ error: offline analysis still works, live capture does not.
   "tshark_available": true,
   "interfaces": [
     { "index": 1, "name": "wlp2s0", "description": "Intel ...", "is_loopback": false, "addresses": ["192.168.1.5"] }
-  ]
+  ],
+  "message": null
 }
 ```
 
-`source` is `tshark`, `dumpcap` or `none`. When no capture tool is available the list is
-empty and `tshark_available` is `false` — this is a normal, non-error state.
+`source` is `tshark`, `dumpcap` or `none`. When no capture tool is available, or the
+listing fails, the list is empty or falls back to the system network devices and
+`message` explains what happened in beginner-friendly words. **This endpoint never
+answers with a 500**: an unusable capture setup is a normal state, not a crash.
 
 ### `POST /api/capture/start`
 
@@ -133,15 +140,17 @@ Response `200`:
   "status": "stopped",
   "capture_id": "b7d1...",
   "packets_captured": 1204,
-  "capture_file": "/abs/path/capture.pcapng",
+  "capture_file": "capture-b7d1....pcapng",
   "analysis_id": "3c9e...",
-  "message": "Capture stopped and analysed."
+  "message": "Capture stopped and analysed.",
+  "error": null
 }
 ```
 
 The stopped capture is analysed automatically and the resulting `analysis_id` is returned
 so the UI can jump straight to the results. `analysis_id` is `null` if the capture file
-could not be analysed (the file path is still returned).
+could not be analysed; in that case `error` explains why and the file name is still
+returned. The request still succeeds, because stopping the capture did succeed.
 
 ## 3. Analysis
 
@@ -176,6 +185,29 @@ upload limit is 256 MB by default).
 ### `GET /api/analysis/{analysis_id}/summary`
 
 Returns a `CaptureSummary` object (see `models/packet.py`).
+
+Two aggregate fields exist so the charts are computed over the **whole** capture and
+never over a single page of rows (contract v1.2):
+
+```jsonc
+"timeline": [
+  { "timestamp": "2026-10-21T18:00:00.000000Z", "packets": 12, "bytes": 8400 }
+],
+"size_distribution": [
+  { "label": "0-63", "min_bytes": 0, "max_bytes": 63, "packets": 10, "bytes": 400 },
+  { "label": "1500+", "min_bytes": 1500, "max_bytes": null, "packets": 3, "bytes": 4800 }
+]
+```
+
+* `timeline` — chronological buckets over the capture. The bucket width starts at one
+  second and widens for long captures so there are never more than 120 buckets.
+  `timestamp` is the bucket start (ISO-8601 UTC).
+* `size_distribution` — the fixed size ranges `0-63`, `64-127`, `128-255`, `256-511`,
+  `512-1023`, `1024-1499`, `1500-3999`, `4000-8999`, `9000+` in bytes. `max_bytes` is
+  `null` for the last bucket. All nine ranges are always present, even when empty.
+
+Both fields are optional: a client must handle their absence (older backend) by hiding
+that chart, not by failing.
 
 ### `GET /api/analysis/{analysis_id}/packets`
 

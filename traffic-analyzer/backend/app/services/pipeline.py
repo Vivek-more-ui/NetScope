@@ -53,7 +53,8 @@ def detect_source_kind(path: str | Path) -> str:
         with file_path.open("rb") as handle:
             head = handle.read(8)
     except OSError as exc:
-        raise CaptureNotReadable(f"Cannot open '{file_path}': {exc}") from exc
+        # Only the file name is reported; absolute paths never leave the backend.
+        raise CaptureNotReadable(f"Cannot open '{file_path.name}': {exc.strerror or exc}") from exc
 
     if head[:4] == PCAPNG_MAGIC:
         return "pcapng"

@@ -5,6 +5,7 @@ Entry point: ``uvicorn app.main:app --reload`` from the ``backend`` directory.
 
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import asynccontextmanager
 
@@ -17,6 +18,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import APP_VERSION, CONTRACT_VERSION, CORS_ORIGINS, ensure_directories
 from .routers import analysis, capture, health
 from .services.store import store
+
+logger = logging.getLogger("traffic_analyzer.api")
 
 _STARTED_AT = time.time()
 
@@ -91,13 +94,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Last resort handler.
+
+    The technical detail (type and traceback) stays in the server log; the client
+    only learns that something went wrong, so no internal detail is leaked.
+    """
+    logger.exception("unhandled error while serving %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={
             "error": {
                 "code": "internal_error",
-                "message": "Unexpected server error.",
-                "detail": {"exception": type(exc).__name__},
+                "message": (
+                    "The server hit an unexpected problem. The details are in the "
+                    "server log; the analysis can be retried."
+                ),
+                "detail": {},
             }
         },
     )

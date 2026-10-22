@@ -110,6 +110,24 @@ class ConversationEntry(BaseModel):
     bytes: int = Field(..., ge=0)
 
 
+class TimelineBucket(BaseModel):
+    """One time bucket of the capture, used for the traffic-over-time chart."""
+
+    timestamp: str = Field(..., description="ISO-8601 UTC start of the bucket")
+    packets: int = Field(..., ge=0)
+    bytes: int = Field(..., ge=0)
+
+
+class SizeBucket(BaseModel):
+    """One frame-size range of the capture, used for the size histogram."""
+
+    label: str = Field(..., description="Human readable range, e.g. '128-255'")
+    min_bytes: Optional[int] = Field(default=None, ge=0)
+    max_bytes: Optional[int] = Field(default=None, ge=0)
+    packets: int = Field(..., ge=0)
+    bytes: int = Field(..., ge=0)
+
+
 class CaptureSummary(BaseModel):
     analysis_id: str
     source_file: str
@@ -130,6 +148,14 @@ class CaptureSummary(BaseModel):
     top_hosts: list[HostEntry] = Field(default_factory=list)
     conversations: list[ConversationEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    timeline: list[TimelineBucket] = Field(
+        default_factory=list,
+        description="Traffic over time, computed over the whole capture (contract v1.2)",
+    )
+    size_distribution: list[SizeBucket] = Field(
+        default_factory=list,
+        description="Frame size ranges, computed over the whole capture (contract v1.2)",
+    )
 
 
 class PacketPage(BaseModel):
@@ -205,6 +231,10 @@ class CaptureInterfacesResponse(BaseModel):
     source: Literal["tshark", "dumpcap", "none"]
     tshark_available: bool = False
     interfaces: list[CaptureInterface] = Field(default_factory=list)
+    message: Optional[str] = Field(
+        default=None,
+        description="Why the list is empty or degraded, phrased for a beginner",
+    )
 
 
 class CaptureStartRequest(BaseModel):
@@ -234,6 +264,9 @@ class CaptureStopResponse(BaseModel):
     capture_file: Optional[str] = None
     analysis_id: Optional[str] = None
     message: str
+    error: Optional[str] = Field(
+        default=None, description="Why the capture could not be analysed, if that happened"
+    )
 
 
 class ErrorBody(BaseModel):

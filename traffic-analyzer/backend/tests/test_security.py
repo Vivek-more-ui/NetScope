@@ -420,7 +420,10 @@ class TestErrorEnvelopeDoesNotLeakInternals:
         assert body["error"]["code"] == "internal_error"
         assert "secret internal detail" not in response.text
         assert "/etc/passwd" not in response.text
-        assert body["error"]["detail"]["exception"] == "RuntimeError"
+        # No internal detail is exposed: neither the exception type nor its message.
+        assert body["error"]["detail"] == {}
+        assert "RuntimeError" not in response.text
+        assert body["error"]["message"]
 
 
 class TestCorsIsRestricted:

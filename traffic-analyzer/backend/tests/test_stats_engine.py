@@ -12,6 +12,8 @@ from app.services.stats import (
     filter_packets,
     host_counts,
     protocol_counts,
+    size_distribution,
+    timeline_buckets,
 )
 
 
@@ -168,6 +170,62 @@ class TestFilters:
 
     def test_unknown_filter_values_are_ignored(self):
         assert len(filter_packets(sample_packets(), protocol="", q=None, min_bytes=None)) == 4
+
+
+class TestTimelineAndSizeDistribution:
+    def test_timeline_covers_the_whole_capture(self):
+        packets = [
+            packet(
+                frame_number=index + 1,
+                timestamp_epoch=1_772_000_000.0 + index,
+                captured_frame_length=100,
+            )
+            for index in range(10)
+        ]
+        buckets = timeline_buckets(packets)
+        assert sum(bucket.packets for bucket in buckets) == 10
+        assert sum(bucket.bytes for bucket in buckets) == 1000
+        assert buckets[0].timestamp.startswith("2026-")
+
+    def test_timeline_of_an_empty_capture_is_empty(self):
+        assert timeline_buckets([]) == []
+
+    def test_timeline_never_exceeds_the_bucket_limit(self):
+        packets = [
+            packet(frame_number=index + 1, timestamp_epoch=1_772_000_000.0 + index * 60)
+            for index in range(500)
+        ]
+        buckets = timeline_buckets(packets)
+        assert 0 < len(buckets) <= 120
+        assert sum(bucket.packets for bucket in buckets) == 500
+
+    def test_size_distribution_counts_every_packet(self):
+        packets = [
+            packet(frame_number=1, captured_frame_length=40),
+            packet(frame_number=2, captured_frame_length=100),
+            packet(frame_number=3, captured_frame_length=1500),
+            packet(frame_number=4, captured_frame_length=20000),
+        ]
+        buckets = size_distribution(packets)
+        assert sum(bucket.packets for bucket in buckets) == 4
+        by_label = {bucket.label: bucket for bucket in buckets}
+        assert by_label["0-63"].packets == 1
+        assert by_label["64-127"].packets == 1
+        assert by_label["1500-3999"].packets == 1
+        assert by_label["9000+"].packets == 1
+        assert by_label["9000+"].max_bytes is None
+
+    def test_summary_carries_the_chart_aggregates(self):
+        summary = build_summary(
+            analysis_id="abc",
+            source_file="sample.pcap",
+            source_kind="pcap",
+            packets=sample_packets(),
+            warnings=[],
+        )
+        assert sum(bucket.packets for bucket in summary.timeline) == 4
+        assert sum(bucket.packets for bucket in summary.size_distribution) == 4
+        assert len(summary.size_distribution) == 9
 
 
 class TestSummary:

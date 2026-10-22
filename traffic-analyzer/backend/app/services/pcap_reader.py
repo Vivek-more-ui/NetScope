@@ -36,7 +36,7 @@ def read_capture(path: str | Path) -> list[RawFrame]:
     """Read all packets from a PCAP or PCAPNG file into a list of RawFrame objects."""
     file_path = Path(path)
     if not file_path.is_file():
-        raise FileNotFoundError(f"Capture file not found: {file_path}")
+        raise FileNotFoundError(f"Capture file not found: {file_path.name}")
 
     with file_path.open("rb") as handle:
         magic = handle.read(4)

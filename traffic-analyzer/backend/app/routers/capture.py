@@ -1,10 +1,18 @@
 """Live capture router.
 
 Provides capture status, interface discovery, start capture, and stop capture endpoints.
+
+Design rules for this router:
+
+* No route may ever answer with a bare 500 because a helper failed. Every failure
+  path is turned into an actionable message for the user, and the technical detail
+  stays in the server log.
+* Responses never contain absolute filesystem paths; only file names are exposed.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -12,7 +20,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -30,7 +38,25 @@ from ..services import pipeline, tshark
 from ..services.pipeline import CaptureNotReadable
 from ..services.store import Analysis, store, utc_now_iso
 
+LOGGER = logging.getLogger("traffic_analyzer.capture")
+
 router = APIRouter()
+
+
+def _public_name(path: Optional[Path]) -> Optional[str]:
+    """Return the file name only. Absolute paths never leave the backend."""
+    if path is None:
+        return None
+    return Path(path).name
+
+
+def _tool_available() -> bool:
+    """Ask the capture adapter whether a capture tool exists, without ever raising."""
+    try:
+        return bool(tshark.is_available())
+    except Exception as exc:  # pragma: no cover - defensive
+        LOGGER.warning("probing the capture tool failed: %s", exc)
+        return False
 
 
 class CaptureSession:
@@ -55,7 +81,7 @@ _SESSION = CaptureSession()
 
 @router.get("/status", response_model=CaptureStatus)
 async def get_status() -> CaptureStatus:
-    available = tshark.is_available()
+    available = _tool_available()
     with _SESSION.lock:
         if _SESSION.running and _SESSION.process:
             ret = _SESSION.process.poll()
@@ -65,10 +91,19 @@ async def get_status() -> CaptureStatus:
                 if ret != 0:
                     _SESSION.last_error = f"Capture process terminated with exit code {ret}"
 
-        # Count packets if capture file exists
+        # Count packets if capture file exists. A failure here must never break the
+        # status endpoint: the last known count is reported instead.
         p_count = _SESSION.packets_captured
         if _SESSION.capture_file and _SESSION.capture_file.exists():
-            counted = tshark.count_packets(_SESSION.capture_file)
+            try:
+                counted = tshark.count_packets(_SESSION.capture_file)
+            except Exception as exc:
+                LOGGER.warning("counting the packets in the capture file failed: %s", exc)
+                counted = None
+                _SESSION.last_error = (
+                    "The capture file could not be read while counting packets; "
+                    "the last known count is shown."
+                )
             if counted is not None:
                 p_count = counted
                 _SESSION.packets_captured = counted
@@ -81,27 +116,38 @@ async def get_status() -> CaptureStatus:
             stopped_at=_SESSION.stopped_at,
             packets_captured=p_count,
             packets_filtered=0,
-            capture_file=str(_SESSION.capture_file) if _SESSION.capture_file else None,
+            capture_file=_public_name(_SESSION.capture_file),
             filter=_SESSION.filter,
             last_error=_SESSION.last_error,
             tshark_available=available,
         )
 
 
-def _discover_interfaces() -> tuple[str, bool, list[CaptureInterface]]:
-    """Return (source, tshark_available, interfaces).
+def _discover_interfaces() -> tuple[str, bool, list[CaptureInterface], Optional[str]]:
+    """Return (source, tool_available, interfaces, message).
 
     Prefers TShark's own listing; when TShark cannot list interfaces (missing binary or
-    permission problem) the system device list is used as a fallback.
+    permission problem) the system device list is used as a fallback. A failure never
+    raises: the reason is returned as a message the UI can show.
     """
-    available = tshark.is_available()
+    available = _tool_available()
     source: str = "none"
     if available:
         source = "tshark"
     elif DUMPCAP_PATH:
         source = "dumpcap"
 
-    raw_ifaces = tshark.list_interfaces()
+    message: Optional[str] = None
+    try:
+        raw_ifaces = tshark.list_interfaces()
+    except Exception as exc:
+        LOGGER.warning("listing the capture interfaces failed: %s", exc)
+        raw_ifaces = []
+        message = (
+            "The capture interfaces could not be listed. Live capture may need "
+            "extra permissions (CAP_NET_RAW) or a TShark installation."
+        )
+
     ifaces: list[CaptureInterface] = []
     for item in raw_ifaces:
         ifaces.append(
@@ -128,19 +174,31 @@ def _discover_interfaces() -> tuple[str, bool, list[CaptureInterface]]:
                         addresses=[],
                     )
                 )
-        except Exception:
-            pass
+        except OSError as exc:
+            LOGGER.warning("reading the system interface list failed: %s", exc)
 
-    return source, available, ifaces
+    if not ifaces and message is None:
+        message = (
+            "No capture interface is available on this machine. Live capture is not "
+            "possible right now; analysing saved capture files still works."
+        )
+    elif not ifaces:
+        message = (
+            "The capture interfaces could not be listed, but the system network "
+            "devices are shown as a fallback."
+        )
+
+    return source, available, ifaces, message
 
 
 @router.get("/interfaces", response_model=CaptureInterfacesResponse)
 async def get_interfaces() -> CaptureInterfacesResponse:
-    source, available, ifaces = _discover_interfaces()
+    source, available, ifaces, message = _discover_interfaces()
     return CaptureInterfacesResponse(
         source=source,  # type: ignore[arg-type]
         tshark_available=available,
         interfaces=ifaces,
+        message=message,
     )
 
 
@@ -164,7 +222,7 @@ async def start_capture(payload: CaptureStartRequest) -> CaptureStartResponse:
         )
 
     # Validate the interface against the interfaces this host actually offers.
-    _, _, known_interfaces = _discover_interfaces()
+    _, _, known_interfaces, _ = _discover_interfaces()
     known_names = {item.name for item in known_interfaces}
     if known_names and payload.interface not in known_names:
         raise HTTPException(
@@ -295,13 +353,19 @@ async def stop_capture(payload: Optional[CaptureStopRequest] = None) -> CaptureS
                 store.put(analysis)
                 _SESSION.analysis_id = analysis_id
             except Exception as exc:
-                _SESSION.last_error = f"Analysis of capture file failed: {exc}"
+                LOGGER.warning("analysing the capture file failed: %s", exc)
+                _SESSION.last_error = (
+                    "The capture was stopped, but the file could not be analysed. "
+                    "You can still import the capture file manually."
+                )
 
+        error = None if analysis_id else _SESSION.last_error
         return CaptureStopResponse(
             status="stopped",
             capture_id=c_id,
             packets_captured=p_count,
-            capture_file=str(cap_file) if cap_file else None,
+            capture_file=_public_name(cap_file),
             analysis_id=analysis_id,
             message="Capture stopped and analysed." if analysis_id else "Capture stopped.",
+            error=error,
         )

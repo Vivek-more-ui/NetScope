@@ -17,11 +17,18 @@ from ..models.packet import (
     HttpStatusCount,
     NormalizedPacket,
     ProtocolCount,
+    SizeBucket,
+    TimelineBucket,
 )
 
 
 def _format_utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _format_epoch(epoch: float) -> str:
+    """Render a Unix epoch as an ISO-8601 UTC timestamp with microsecond precision."""
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def protocol_counts(packets: list[NormalizedPacket]) -> list[ProtocolCount]:
@@ -162,6 +169,90 @@ def conversation_counts(packets: list[NormalizedPacket]) -> list[ConversationEnt
     return results
 
 
+# Frame size ranges used for the size histogram, in bytes.
+SIZE_RANGES: list[tuple[str, Optional[int], Optional[int]]] = [
+    ("0-63", 0, 63),
+    ("64-127", 64, 127),
+    ("128-255", 128, 255),
+    ("256-511", 256, 511),
+    ("512-1023", 512, 1023),
+    ("1024-1499", 1024, 1499),
+    ("1500-3999", 1500, 3999),
+    ("4000-8999", 4000, 8999),
+    ("9000+", 9000, None),
+]
+
+# Upper bound for the number of buckets in the timeline.
+MAX_TIMELINE_BUCKETS = 120
+
+
+def timeline_buckets(packets: list[NormalizedPacket]) -> list[TimelineBucket]:
+    """Traffic over time, bucketed over the whole capture.
+
+    The bucket width grows with the capture length so a long capture never produces
+    an unusable number of points. Buckets are chronological.
+    """
+    if not packets:
+        return []
+
+    epochs = [p.timestamp_epoch for p in packets]
+    start = min(epochs)
+    end = max(epochs)
+    span = max(end - start, 0.0)
+
+    width = 1.0
+    if span > MAX_TIMELINE_BUCKETS:
+        width = span / MAX_TIMELINE_BUCKETS
+
+    counts: dict[int, list[int]] = {}
+    for packet in packets:
+        index = int((packet.timestamp_epoch - start) // width) if width > 0 else 0
+        # The last packet can fall exactly on the boundary, so the index is clamped
+        # to keep the number of buckets within the limit.
+        index = min(index, MAX_TIMELINE_BUCKETS - 1)
+        bucket = counts.setdefault(index, [0, 0])
+        bucket[0] += 1
+        bucket[1] += packet.captured_frame_length
+
+    buckets: list[TimelineBucket] = []
+    for index in sorted(counts):
+        packets_in_bucket, bytes_in_bucket = counts[index]
+        buckets.append(
+            TimelineBucket(
+                timestamp=_format_epoch(start + index * width),
+                packets=packets_in_bucket,
+                bytes=bytes_in_bucket,
+            )
+        )
+    return buckets
+
+
+def size_distribution(packets: list[NormalizedPacket]) -> list[SizeBucket]:
+    """Frame size ranges over the whole capture."""
+    counts: dict[int, list[int]] = {index: [0, 0] for index in range(len(SIZE_RANGES))}
+    for packet in packets:
+        length = packet.captured_frame_length
+        for index, (_label, min_bytes, max_bytes) in enumerate(SIZE_RANGES):
+            if length >= min_bytes and (max_bytes is None or length <= max_bytes):
+                counts[index][0] += 1
+                counts[index][1] += length
+                break
+
+    buckets: list[SizeBucket] = []
+    for index, (label, min_bytes, max_bytes) in enumerate(SIZE_RANGES):
+        packets_in_bucket, bytes_in_bucket = counts[index]
+        buckets.append(
+            SizeBucket(
+                label=label,
+                min_bytes=min_bytes,
+                max_bytes=max_bytes,
+                packets=packets_in_bucket,
+                bytes=bytes_in_bucket,
+            )
+        )
+    return buckets
+
+
 def build_summary(
     analysis_id: str,
     source_file: str,
@@ -232,6 +323,8 @@ def build_summary(
         top_hosts=hosts[:10],
         conversations=convs[:10],
         warnings=list(warnings),
+        timeline=timeline_buckets(packets),
+        size_distribution=size_distribution(packets),
     )
 
 

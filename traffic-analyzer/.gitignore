@@ -29,3 +29,6 @@ backend/data/
 *.log
 .idea/
 .vscode/
+
+# Local runtime logs
+.run/

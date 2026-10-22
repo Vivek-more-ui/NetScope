@@ -3,17 +3,22 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
+  Label,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import type { HostEntry, ProtocolCount } from '../api/types';
-import type { Timeline } from '../lib/timeline';
+import type { CaptureSummary, HostEntry, ProtocolCount } from '../api/types';
 import { formatBytes, formatNumber, formatPercent } from '../lib/format';
 import { Card, EmptyState } from './ui';
 
 const CHART_COLORS = ['#2563eb', '#0d9488', '#b45309', '#7c3aed', '#be123c', '#0369a1', '#4d7c0f', '#9d174d'];
+const TOOLTIP_STYLE = { border: '1px solid #dfe7f2', borderRadius: 12, boxShadow: '0 12px 28px rgba(30, 58, 92, 0.14)', padding: '10px 12px', background: '#ffffff', color: '#14233b' };
 
 export function ProtocolChart(props: { protocols: ProtocolCount[]; total: number }) {
   const { protocols, total } = props;
@@ -29,19 +34,19 @@ export function ProtocolChart(props: { protocols: ProtocolCount[]; total: number
       ) : (
         <div className="chart-frame">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={protocols} margin={{ top: 8, right: 16, bottom: 8, left: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="protocol" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} width={56} />
+            <PieChart>
               <Tooltip
                 formatter={(value: unknown, name: unknown) => [formatNumber(Number(value)), String(name)]}
+                contentStyle={TOOLTIP_STYLE}
               />
-              <Bar name="Packets" dataKey="packets" radius={[4, 4, 0, 0]}>
+              <defs><linearGradient id="protocolBlue" x1="0" x2="1" y1="0" y2="1"><stop stopColor="#2685ff"/><stop offset="1" stopColor="#695bff"/></linearGradient></defs>
+              <Pie data={protocols} dataKey="packets" nameKey="protocol" cx="50%" cy="50%" innerRadius="53%" outerRadius="78%" paddingAngle={3} stroke="none">
                 {protocols.map((entry, index) => (
                   <Cell key={entry.protocol} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
-              </Bar>
-            </BarChart>
+                <Label value={formatNumber(total)} position="center" className="chart-center-label" />
+              </Pie>
+            </PieChart>
           </ResponsiveContainer>
         </div>
       )}
@@ -88,13 +93,15 @@ export function HostsChart(props: { hosts: HostEntry[]; total: number }) {
         <div className="chart-frame chart-frame-tall">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ top: 8, right: 24, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 12 }} />
-              <YAxis type="category" dataKey="ip" tick={{ fontSize: 12 }} width={140} />
+              <defs><linearGradient id="hostGradient" x1="0" x2="1"><stop stopColor="#2ed39a"/><stop offset="1" stopColor="#127af5"/></linearGradient></defs>
+              <CartesianGrid stroke="#edf1f6" strokeDasharray="3 5" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 12, fill: '#8491a5' }} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="ip" tick={{ fontSize: 12, fill: '#526174' }} tickLine={false} axisLine={false} width={140} />
               <Tooltip
                 formatter={(value: unknown, name: unknown) => [formatBytes(Number(value)), String(name)]}
+                contentStyle={TOOLTIP_STYLE}
               />
-              <Bar name="Bytes on the wire" dataKey="total_bytes" fill="#0d9488" radius={[0, 4, 4, 0]} />
+              <Bar name="Bytes on the wire" dataKey="total_bytes" fill="url(#hostGradient)" radius={[0, 7, 7, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -103,34 +110,55 @@ export function HostsChart(props: { hosts: HostEntry[]; total: number }) {
   );
 }
 
-export function TimelineChart(props: {
-  timeline: Timeline;
-  sampleSize: number;
-  totalPackets: number;
-}) {
-  const { timeline, sampleSize, totalPackets } = props;
-  const complete = sampleSize > 0 && sampleSize >= totalPackets;
+export function TimelineChart(props: { summary: CaptureSummary }) {
+  const { summary } = props;
+  const data = summary.timeline.map((bucket) => ({
+    ...bucket,
+    label: new Date(bucket.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+  }));
 
   return (
     <figure className="chart-figure">
       <figcaption className="chart-caption">
-        Counts <strong>packets per {timeline.bucketSeconds || 1} second time bucket</strong> (UTC),
-        built from {formatNumber(sampleSize)} of {formatNumber(totalPackets)} packets.
-        {complete ? ' The sample covers the whole capture.' : ' This is a partial sample.'}
+        Shows <strong>packets over time</strong> from every timestamp in this capture.
       </figcaption>
-      {timeline.buckets.length === 0 ? (
+      {data.length === 0 ? (
         <EmptyState title="No timeline data" message="The analysis contains no timestamped packets." />
       ) : (
         <div className="chart-frame">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={timeline.buckets} margin={{ top: 8, right: 16, bottom: 8, left: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} width={56} />
+            <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 4 }}>
+              <CartesianGrid stroke="#edf1f6" strokeDasharray="3 5" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#8491a5' }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 12, fill: '#8491a5' }} tickLine={false} axisLine={false} allowDecimals={false} width={56} />
               <Tooltip
                 formatter={(value: unknown, name: unknown) => [formatNumber(Number(value)), String(name)]}
+                contentStyle={TOOLTIP_STYLE}
               />
-              <Bar name="Packets" dataKey="packets" fill="#b45309" radius={[4, 4, 0, 0]} />
+              <Line name="Packets" type="monotone" dataKey="packets" stroke="#2563eb" strokeWidth={3} dot={false} activeDot={{ r: 5, fill: '#ffffff', stroke: '#2563eb', strokeWidth: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </figure>
+  );
+}
+
+export function SizeChart(props: { summary: CaptureSummary }) {
+  const { summary } = props;
+  return (
+    <figure className="chart-figure">
+      <figcaption className="chart-caption">Shows <strong>how large the captured packets were</strong>, using the full capture.</figcaption>
+      {summary.size_distribution.length === 0 ? <EmptyState title="No size data" message="No frame sizes were available." /> : (
+        <div className="chart-frame">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={summary.size_distribution} margin={{ top: 8, right: 16, bottom: 32, left: 4 }}>
+              <defs><linearGradient id="sizeGradient" x1="0" x2="0" y1="0" y2="1"><stop stopColor="#9e72ff"/><stop offset="1" stopColor="#5b3ed6"/></linearGradient></defs>
+              <CartesianGrid stroke="#edf1f6" strokeDasharray="3 5" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#8491a5' }} tickLine={false} axisLine={false} interval={0} angle={-25} textAnchor="end" />
+              <YAxis tick={{ fontSize: 12, fill: '#8491a5' }} tickLine={false} axisLine={false} allowDecimals={false} width={56} />
+              <Tooltip formatter={(value: unknown) => [formatNumber(Number(value)), 'Packets']} contentStyle={TOOLTIP_STYLE} />
+              <Bar name="Packets" dataKey="packets" fill="url(#sizeGradient)" radius={[7, 7, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -144,9 +172,7 @@ export function ChartsSection(props: {
   protocolTotal: number;
   hosts: HostEntry[];
   hostTotal: number;
-  timeline: Timeline;
-  timelineSampleSize: number;
-  packetTotal: number;
+  summary: CaptureSummary | null;
   hasAnalysis: boolean;
 }) {
   const {
@@ -154,9 +180,7 @@ export function ChartsSection(props: {
     protocolTotal,
     hosts,
     hostTotal,
-    timeline,
-    timelineSampleSize,
-    packetTotal,
+    summary,
     hasAnalysis,
   } = props;
 
@@ -174,11 +198,7 @@ export function ChartsSection(props: {
         <div className="chart-grid">
           <ProtocolChart protocols={protocols} total={protocolTotal} />
           <HostsChart hosts={hosts} total={hostTotal} />
-          <TimelineChart
-            timeline={timeline}
-            sampleSize={timelineSampleSize}
-            totalPackets={packetTotal}
-          />
+          {summary ? <><TimelineChart summary={summary} /><SizeChart summary={summary} /></> : null}
         </div>
       )}
     </Card>

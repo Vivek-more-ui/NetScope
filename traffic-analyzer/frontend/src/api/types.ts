@@ -151,6 +151,32 @@ export interface ConversationEntry {
   bytes: number;
 }
 
+export interface TimelineBucket {
+  timestamp: string;
+  packets: number;
+  bytes: number;
+}
+
+export interface SizeBucket {
+  label: string;
+  min_bytes: number | null;
+  max_bytes: number | null;
+  packets: number;
+  bytes: number;
+}
+
+export interface SampleInfo {
+  name: string;
+  description: string;
+  size_bytes: number;
+  kind: string;
+}
+
+export interface SamplePage {
+  samples: SampleInfo[];
+  count: number;
+}
+
 export interface CaptureSummary {
   analysis_id: string;
   source_file: string;
@@ -171,6 +197,8 @@ export interface CaptureSummary {
   top_hosts: HostEntry[];
   conversations: ConversationEntry[];
   warnings: string[];
+  timeline: TimelineBucket[];
+  size_distribution: SizeBucket[];
 }
 
 export interface PacketPage {
@@ -227,6 +255,8 @@ export interface CaptureInterfacesResponse {
   source: 'tshark' | 'dumpcap' | 'none';
   tshark_available: boolean;
   interfaces: CaptureInterface[];
+  /** Plain-language reason when the list is unavailable or only a fallback. */
+  message: string | null;
 }
 
 export interface CaptureStartRequest {

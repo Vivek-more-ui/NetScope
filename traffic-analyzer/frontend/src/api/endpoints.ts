@@ -20,6 +20,7 @@ import type {
   PacketPage,
   ProtocolPage,
   CaptureSummary,
+  SamplePage,
 } from './types';
 
 export function getHealth(): Promise<HealthResponse> {
@@ -47,6 +48,14 @@ export function uploadAnalysisFile(
   onProgress: (progress: UploadProgress) => void,
 ): Promise<AnalysisUploadResult> {
   return uploadFile<AnalysisUploadResult>('/api/analysis/upload', file, onProgress);
+}
+
+export function getSamples(): Promise<SamplePage> {
+  return requestJson<SamplePage>('/api/analysis/samples');
+}
+
+export function analyseSample(name: string): Promise<AnalysisUploadResult> {
+  return postJson<AnalysisUploadResult>(`/api/analysis/samples/${encodeURIComponent(name)}`, {});
 }
 
 export function getSummary(analysisId: string): Promise<CaptureSummary> {

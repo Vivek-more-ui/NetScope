@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { errorMessage } from './api/client';
 import { getHosts, getPackets, getProtocols, getSummary } from './api/endpoints';
 import { DEFAULT_PAGE_SIZE, EMPTY_FILTERS } from './api/params';
@@ -9,8 +9,6 @@ import type {
   PacketPage,
   ProtocolCount,
 } from './api/types';
-import { buildTimeline } from './lib/timeline';
-import type { Timeline } from './lib/timeline';
 import { CapturePanel } from './components/CapturePanel';
 import { ChartsSection } from './components/ChartsSection';
 import { ExportBar } from './components/ExportBar';
@@ -18,11 +16,9 @@ import { HealthBanner } from './components/HealthBanner';
 import { ImportPanel } from './components/ImportPanel';
 import { PacketExplorer } from './components/PacketExplorer';
 import { SummaryView } from './components/SummaryView';
-
-const EMPTY_TIMELINE: Timeline = { buckets: [], bucketSeconds: 0, covered: 0 };
-
-/** The API caps a page at 1000 rows; the timeline is built from that bounded sample. */
-const TIMELINE_SAMPLE_LIMIT = 1000;
+import { QuickStart } from './components/QuickStart';
+import { LearnPanel } from './components/LearnPanel';
+import { ReferenceDashboard } from './components/ReferenceDashboard';
 
 export default function App() {
   const [analysisId, setAnalysisId] = useState<string | null>(null);
@@ -43,9 +39,8 @@ export default function App() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
 
-  const [timeline, setTimeline] = useState<Timeline>(EMPTY_TIMELINE);
-  const [timelineSampleSize, setTimelineSampleSize] = useState(0);
-  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const importRef = useRef<HTMLDivElement>(null);
+  const captureRef = useRef<HTMLDivElement>(null);
 
   const loadAnalysis = useCallback((id: string) => {
     setAnalysisId(id);
@@ -136,97 +131,62 @@ export default function App() {
     };
   }, [analysisId, filters, offset, limit]);
 
-  // Timeline sample: the API has no timeline endpoint, so a bounded page of
-  // packets is bucketed in the browser.
-  useEffect(() => {
-    if (!analysisId) {
-      setTimeline(EMPTY_TIMELINE);
-      setTimelineSampleSize(0);
-      setTimelineError(null);
-      return;
-    }
-    let cancelled = false;
-    getPackets(analysisId, EMPTY_FILTERS, { limit: TIMELINE_SAMPLE_LIMIT, offset: 0 })
-      .then((result) => {
-        if (cancelled) return;
-        setTimeline(buildTimeline(result.items));
-        setTimelineSampleSize(result.items.length);
-        setTimelineError(null);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setTimeline(EMPTY_TIMELINE);
-        setTimelineSampleSize(0);
-        setTimelineError(errorMessage(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [analysisId]);
-
   const applyFilters = (next: PacketFilters) => {
     setFilters({ ...next });
   };
 
-  const packetTotal = page?.total ?? summary?.packet_count ?? 0;
-
   return (
-    <div className="app">
-      <header className="app-header">
-        <div>
-          <h1>HTTP/HTTPS Traffic Analyzer</h1>
-          <p className="app-tagline">
-            Import a capture, inspect the packets, and export what you find. All values come
-            from the analysis API — nothing is estimated in the browser.
-          </p>
-        </div>
-        {analysisId ? (
-          <p className="app-analysis-id">
-            Loaded analysis: <code>{analysisId}</code>
-          </p>
-        ) : null}
+    <div className="app dashboard-shell">
+      <div className="dashboard-titleband">
+        <p>In the FlowLab traffic system</p>
+        <h1>Overview of <span>network traffic</span></h1>
+      </div>
+      <header className="dashboard-topbar">
+        <a className="brand" href="#top" aria-label="Traffic Analyzer home"><span className="brand-mark">⌁</span><span>FLOW<span>LAB</span></span></a>
+        <p className="topbar-divider">Traffic Analysis Workspace</p>
+        <div className="topbar-actions"><span className="topbar-search">⌕ &nbsp; Search traffic</span><span className="status-dot">● API online</span></div>
       </header>
 
-      <main className="app-layout">
-        <div className="sidebar">
-          <HealthBanner />
-          <ImportPanel onAnalysisReady={loadAnalysis} />
-          <CapturePanel onAnalysisReady={loadAnalysis} />
-          <ExportBar analysisId={analysisId} filters={filters} />
+      <main className="dashboard-layout" id="top">
+        <aside className="dashboard-nav">
+          <p className="nav-label">Workspace</p>
+          <a className="nav-item nav-item-active" href="#overview">⌂ <span>Overview</span></a>
+          <a className="nav-item" href="#charts">⌁ <span>Traffic flow</span></a>
+          <a className="nav-item" href="#explorer">⌕ <span>Explore packets</span></a>
+          <a className="nav-item" href="#capture">◉ <span>Live capture</span></a>
+          <p className="nav-label">Analysis</p>
+          <a className="nav-item" href="#learn">◌ <span>Learn</span></a>
+          <a className="nav-item" href="#exports">⇩ <span>Exports</span></a>
+          <div className="nav-tip"><strong>Tip</strong><span>Begin with a sample capture to explore the dashboard.</span></div>
+        </aside>
+
+        <div className="dashboard-content">
+          <QuickStart
+            onImport={() => importRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onLiveCapture={() => captureRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onAnalysisReady={loadAnalysis}
+          />
+          <ReferenceDashboard
+            summary={summary}
+            protocols={protocols}
+            onProtocolSelect={(protocol) => {
+              setFilters((current) => ({ ...current, protocol }));
+              setOffset(0);
+              document.querySelector('#explorer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          />
+          <section id="overview"><SummaryView summary={summary} error={summaryError} /></section>
+          <section id="charts"><ChartsSection protocols={protocols} protocolTotal={protocolTotal} hosts={hosts} hostTotal={hostTotal} summary={summary} hasAnalysis={analysisId !== null} /></section>
+          <section id="learn"><LearnPanel summary={summary} /></section>
+          <section id="explorer"><PacketExplorer filters={filters} onApplyFilters={applyFilters} page={page} error={packetsError} loading={loadingPackets} limit={limit} offset={offset} onLimitChange={setLimit} onOffsetChange={setOffset} hasAnalysis={analysisId !== null} /></section>
         </div>
 
-        <div className="content">
-          <SummaryView summary={summary} error={summaryError} />
-          <ChartsSection
-            protocols={protocols}
-            protocolTotal={protocolTotal}
-            hosts={hosts}
-            hostTotal={hostTotal}
-            timeline={timeline}
-            timelineSampleSize={timelineSampleSize}
-            packetTotal={packetTotal}
-            hasAnalysis={analysisId !== null}
-          />
-          {timelineError ? (
-            <p className="notice notice-warn" role="status">
-              <span className="notice-text">
-                The timeline sample could not be loaded: {timelineError}
-              </span>
-            </p>
-          ) : null}
-          <PacketExplorer
-            filters={filters}
-            onApplyFilters={applyFilters}
-            page={page}
-            error={packetsError}
-            loading={loadingPackets}
-            limit={limit}
-            offset={offset}
-            onLimitChange={setLimit}
-            onOffsetChange={setOffset}
-            hasAnalysis={analysisId !== null}
-          />
-        </div>
+        <aside className="dashboard-controls">
+          <HealthBanner />
+          <div ref={importRef}><ImportPanel onAnalysisReady={loadAnalysis} /></div>
+          <div ref={captureRef} id="capture"><CapturePanel onAnalysisReady={loadAnalysis} /></div>
+          <div id="exports"><ExportBar analysisId={analysisId} filters={filters} /></div>
+        </aside>
       </main>
 
       <footer className="app-footer">

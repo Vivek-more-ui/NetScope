@@ -162,6 +162,7 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
   const running = status?.running ?? false;
   const interfaceCount = interfaces?.interfaces.length ?? 0;
   const toolMissing = interfaces !== null && !interfaces.tshark_available;
+  const liveCaptureUnavailable = toolMissing || Boolean(interfaces?.message);
 
   return (
     <Card
@@ -185,6 +186,14 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
         />
       ) : null}
 
+      {interfaces?.message && !toolMissing ? (
+        <InfoNotice
+          tone="warn"
+          title="Live capture needs attention"
+          message={`${interfaces.message} The listed devices are only a fallback, so live capture is disabled until this is resolved.`}
+        />
+      ) : null}
+
       {interfaces && interfaceCount === 0 && !toolMissing ? (
         <InfoNotice
           tone="warn"
@@ -205,7 +214,7 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
             id="capture-interface"
             value={interfaceName}
             onChange={(event) => setInterfaceName(event.target.value)}
-            disabled={running || interfaceCount === 0}
+            disabled={running || interfaceCount === 0 || liveCaptureUnavailable}
           >
             {interfaceCount === 0 ? (
               <option value="">No interfaces available</option>
@@ -241,7 +250,7 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
               max={3600}
               value={duration}
               onChange={(event) => setDuration(event.target.value)}
-              disabled={running}
+              disabled={running || liveCaptureUnavailable}
             />
           </Field>
           <Field id="capture-filter" label="Capture filter (BPF)" hint="e.g. tcp port 80">
@@ -250,7 +259,7 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
               type="text"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              disabled={running}
+              disabled={running || liveCaptureUnavailable}
               placeholder="tcp port 80"
             />
           </Field>
@@ -262,7 +271,7 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
             type="text"
             value={displayFilter}
             onChange={(event) => setDisplayFilter(event.target.value)}
-            disabled={running}
+            disabled={running || liveCaptureUnavailable}
             placeholder="http"
           />
         </Field>
@@ -271,7 +280,7 @@ export function CapturePanel(props: { onAnalysisReady: (analysisId: string) => v
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={running || busy !== 'idle' || !interfaceName}
+            disabled={running || busy !== 'idle' || !interfaceName || liveCaptureUnavailable}
           >
             {busy === 'starting' ? 'Starting…' : 'Start capture'}
           </button>

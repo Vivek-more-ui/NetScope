@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -32,6 +33,7 @@ from ..services.pipeline import CaptureNotReadable, detect_source_kind, store_up
 from ..services.store import Analysis, new_analysis_id, store, utc_now_iso
 
 router = APIRouter()
+LOGGER = logging.getLogger("traffic_analyzer.analysis")
 
 SCHEMA_EXPORT_COLUMNS = [
     "frame_number",
@@ -120,6 +122,14 @@ async def upload_capture(
             raise HTTPException(
                 status_code=400,
                 detail={"message": f"Could not read capture '{filename}': {exc}", "filename": filename},
+            ) from exc
+        except Exception as exc:
+            # A malformed capture must be a useful client error, not an unhandled
+            # 500. Keep the implementation detail in the server log.
+            LOGGER.exception("unexpected capture parsing failure for uploaded file %s", filename)
+            raise HTTPException(
+                status_code=400,
+                detail={"message": f"Could not analyse capture '{filename}'. The file may be malformed or unsupported.", "filename": filename},
             ) from exc
 
         # Create Analysis record

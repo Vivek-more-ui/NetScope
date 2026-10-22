@@ -261,9 +261,10 @@ async def start_capture(payload: CaptureStartRequest) -> CaptureStartResponse:
             )
         except OSError as exc:
             log_handle.close()
+            LOGGER.exception("failed to launch capture tool")
             raise HTTPException(
                 status_code=503,
-                detail={"message": f"Failed to launch capture tool: {exc}"},
+                detail={"message": "The capture tool could not be started. Check that it is installed and that this account has capture permission."},
             ) from exc
 
         # Give it a short moment to ensure it didn't immediately fail on permission
@@ -275,7 +276,8 @@ async def start_capture(payload: CaptureStartRequest) -> CaptureStartResponse:
             if log_file_path.exists():
                 err_text = log_file_path.read_text(encoding="utf-8", errors="ignore").strip()
                 if err_text:
-                    err_msg = f"Capture failed: {err_text}"
+                    LOGGER.warning("capture tool exited immediately: %s", err_text)
+                    err_msg = "Capture could not start. Check the selected interface and capture permissions."
             raise HTTPException(
                 status_code=503,
                 detail={"message": err_msg},

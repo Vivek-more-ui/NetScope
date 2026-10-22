@@ -144,6 +144,8 @@ export function PacketExplorer(props: PacketExplorerProps) {
           onOffsetChange(0);
         }}
       >
+        <details className="filters-details">
+          <summary>Filters and search <span>Find a host, protocol, or packet detail</span></summary>
         <fieldset className="filterset">
           <legend>Filters</legend>
 
@@ -355,6 +357,7 @@ export function PacketExplorer(props: PacketExplorerProps) {
             {loading ? <Spinner label="Loading packets…" /> : null}
           </div>
         </fieldset>
+        </details>
       </form>
 
       <p className="query-line">

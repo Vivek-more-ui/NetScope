@@ -135,6 +135,64 @@ class TestStartAndStop:
         capture_file.unlink(missing_ok=True)
 
 
+class TestPacketCounting:
+    """The capture status shows the number of captured packets; it must be right."""
+
+    def test_counts_the_packets_of_a_classic_pcap(self, client, sample_pcap):
+        from app.services.tshark import count_packets
+
+        assert count_packets(sample_pcap) == 3
+
+    def test_counts_the_packets_of_a_pcapng(self, client, tmp_path: Path):
+        import struct
+
+        from app.services.tshark import count_packets
+
+        payload = b"\x00" * 40
+        padded = payload + b"\x00" * ((4 - len(payload) % 4) % 4)
+        path = tmp_path / "sample.pcapng"
+        with path.open("wb") as handle:
+            handle.write(struct.pack("<III", 0x0A0D0D0A, 28, 0x1A2B3C4D))
+            handle.write(struct.pack("<HHq", 1, 0, -1))
+            handle.write(struct.pack("<I", 28))
+            handle.write(struct.pack("<II", 0x00000001, 20))
+            handle.write(struct.pack("<HHI", 1, 0, 262144))
+            handle.write(struct.pack("<I", 20))
+            for _ in range(3):
+                body = struct.pack("<IIIII", 0, 0, 0, len(payload), len(payload)) + padded
+                total = 8 + len(body) + 4
+                handle.write(struct.pack("<II", 0x00000006, total))
+                handle.write(body)
+                handle.write(struct.pack("<I", total))
+        assert count_packets(path) == 3
+
+    def test_counts_a_partially_written_capture(self, client, tmp_path: Path):
+        import struct
+
+        from app.services.tshark import count_packets
+
+        payload = b"\x00" * 40
+        padded = payload + b"\x00" * ((4 - len(payload) % 4) % 4)
+        path = tmp_path / "growing.pcapng"
+        with path.open("wb") as handle:
+            handle.write(struct.pack("<III", 0x0A0D0D0A, 28, 0x1A2B3C4D))
+            handle.write(struct.pack("<HHq", 1, 0, -1))
+            handle.write(struct.pack("<I", 28))
+            handle.write(struct.pack("<II", 0x00000001, 20))
+            handle.write(struct.pack("<HHI", 1, 0, 262144))
+            handle.write(struct.pack("<I", 20))
+            for _ in range(4):
+                body = struct.pack("<IIIII", 0, 0, 0, len(payload), len(payload)) + padded
+                total = 8 + len(body) + 4
+                handle.write(struct.pack("<II", 0x00000006, total))
+                handle.write(body)
+                handle.write(struct.pack("<I", total))
+        # Simulate a file that is still being written: cut off the last block.
+        data = path.read_bytes()
+        path.write_bytes(data[: len(data) - 40])
+        assert count_packets(path) == 3
+
+
 class TestSampleCaptures:
     """The "Try sample" path: a beginner must be able to see the full workflow."""
 

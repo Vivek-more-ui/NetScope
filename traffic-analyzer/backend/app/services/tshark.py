@@ -732,25 +732,47 @@ def _count_pcap(handle, magic: bytes) -> Optional[int]:
 
 
 def _count_pcapng(handle) -> Optional[int]:
+    """Count the packet blocks of a pcapng file.
+
+    Works on a file that is still being written: the blocks that are complete are
+    counted, the incomplete tail is ignored.
+    """
     import struct
 
     count = 0
+    endian = "<"
+    # The caller already consumed the 4 byte magic, so the first block is re-read
+    # from the beginning of the file.
+    handle.seek(0)
     while True:
         header = handle.read(8)
         if len(header) < 8:
             break
         block_type = struct.unpack("<I", header[0:4])[0]
-        total_length = struct.unpack("<I", header[4:8])[0]
+        total_length = struct.unpack(endian + "I", header[4:8])[0]
         if total_length < 12 or total_length > 64 * 1024 * 1024:
-            break
+            # The length may have been read with the wrong byte order (the first
+            # block decides the order), so the other one is tried.
+            other = ">" if endian == "<" else "<"
+            candidate = struct.unpack(other + "I", header[4:8])[0]
+            if 12 <= candidate <= 64 * 1024 * 1024:
+                endian = other
+                total_length = candidate
+            else:
+                break
+
         body = handle.read(total_length - 12)
-        if len(body) < total_length - 12:
+        trailer = handle.read(4)
+        if len(body) < total_length - 12 or len(trailer) < 4:
             break
-        if block_type == 0x00000006:  # Enhanced Packet Block
+
+        if block_type == 0x0A0D0D0A:  # Section Header Block: it decides the byte order
+            if len(body) >= 4:
+                bom = body[:4]
+                if bom == b"\x1a\x2b\x3c\x4d":
+                    endian = ">"
+                elif bom == b"\x4d\x3c\x2b\x1a":
+                    endian = "<"
+        elif block_type in (0x00000006, 0x00000003):  # Enhanced / Simple Packet Block
             count += 1
-        elif block_type == 0x00000003:  # Simple Packet Block
-            count += 1
-        if total_length % 4:
-            padding = 4 - (total_length % 4)
-            handle.read(padding)
     return count

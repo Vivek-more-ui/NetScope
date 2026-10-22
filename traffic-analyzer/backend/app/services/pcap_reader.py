@@ -97,25 +97,20 @@ def _read_pcap(handle: BinaryIO, magic: bytes) -> list[RawFrame]:
 
 
 def _read_pcapng(handle: BinaryIO) -> list[RawFrame]:
-    # Section Header Block read first 4 bytes were 0x0a0d0d0a
-    block_hdr = handle.read(4)
-    if len(block_hdr) < 4:
-        return []
-    total_len = struct.unpack("<I", block_hdr)[0]
-    # Read byte order magic to determine endianness
-    bom = handle.read(4)
-    if bom == b"\x4d\x3c\x2b\x1a":
-        endian = ">"
-    else:
-        endian = "<"
+    """Read a pcapng file.
 
-    # Seek back to beginning of section header
-    handle.seek(0)
-
+    The byte order of a pcapng section is decided by the byte-order magic in its
+    Section Header Block: the bytes ``4d 3c 2b 1a`` mean little endian, the bytes
+    ``1a 2b 3c 4d`` mean big endian.
+    """
     frames: list[RawFrame] = []
     frame_number = 1
-    # Interface link types and resolution (in power of 10, default 6 = 1e-6 us)
+    endian = "<"
+    # Interface link types and timestamp resolution for the current section.
     interfaces: list[dict] = []
+
+    # The caller has already consumed the 4 byte magic; start at the first block.
+    handle.seek(0)
 
     while True:
         hdr = handle.read(8)
@@ -134,14 +129,16 @@ def _read_pcapng(handle: BinaryIO) -> list[RawFrame]:
         if block_type == 0x0A0D0D0A:  # Section Header Block
             if len(body) >= 4:
                 bom = body[:4]
-                endian = ">" if bom == b"\x4d\x3c\x2b\x1a" else "<"
+                if bom == b"\x1a\x2b\x3c\x4d":
+                    endian = ">"
+                elif bom == b"\x4d\x3c\x2b\x1a":
+                    endian = "<"
             interfaces.clear()
 
         elif block_type == 0x00000001:  # Interface Description Block
-            if len(body) >= 4:
+            if len(body) >= 8:
                 link_type = struct.unpack(endian + "H", body[:2])[0]
-                tsresol = 6  # default 10^-6 (microsecond)
-                # Parse options if any (body[8:])
+                divisor = 1_000_000.0  # default: microseconds
                 opt_offset = 8
                 while opt_offset + 4 <= len(body):
                     opt_code, opt_len = struct.unpack(endian + "HH", body[opt_offset : opt_offset + 4])
@@ -150,29 +147,25 @@ def _read_pcapng(handle: BinaryIO) -> list[RawFrame]:
                         break
                     if opt_code == 9 and opt_len >= 1 and opt_offset < len(body):  # if_tsresol
                         res_val = body[opt_offset]
-                        if res_val & 0x80:
-                            # 2^-(res_val & 0x7f)
-                            tsresol = 2 ** (res_val & 0x7F)
-                        else:
-                            tsresol = 10**res_val
+                        divisor = float(2 ** (res_val & 0x7F)) if res_val & 0x80 else float(10**res_val)
                     opt_offset += (opt_len + 3) & ~3
-                interfaces.append({"link_type": link_type, "tsresol": tsresol})
+                interfaces.append({"link_type": link_type, "divisor": divisor})
 
         elif block_type == 0x00000006:  # Enhanced Packet Block
             if len(body) >= 20:
                 if_id, ts_high, ts_low, cap_len, orig_len = struct.unpack(endian + "IIIII", body[:20])
                 ts_raw = (ts_high << 32) | ts_low
-                res = interfaces[if_id]["tsresol"] if if_id < len(interfaces) else 1_000_000
-                divisor = res if isinstance(res, (int, float)) and res > 100 else (10**res if isinstance(res, int) else 1_000_000.0)
-                epoch = ts_raw / float(divisor)
+                interface = interfaces[if_id] if if_id < len(interfaces) else None
+                divisor = interface["divisor"] if interface else 1_000_000.0
+                epoch = ts_raw / divisor
                 pkt_data = body[20 : 20 + cap_len]
-                ltype = interfaces[if_id]["link_type"] if if_id < len(interfaces) else 1
+                ltype = interface["link_type"] if interface else 1
                 frames.append(
                     RawFrame(
                         frame_number=frame_number,
                         timestamp_epoch=epoch,
-                        captured_length=orig_len,  # wire length
-                        original_length=orig_len,
+                        captured_length=cap_len,  # bytes actually stored in the file
+                        original_length=orig_len,  # bytes on the wire
                         link_type=ltype,
                         data=pkt_data,
                     )
@@ -188,7 +181,7 @@ def _read_pcapng(handle: BinaryIO) -> list[RawFrame]:
                     RawFrame(
                         frame_number=frame_number,
                         timestamp_epoch=0.0,
-                        captured_length=orig_len,
+                        captured_length=len(pkt_data),
                         original_length=orig_len,
                         link_type=ltype,
                         data=pkt_data,

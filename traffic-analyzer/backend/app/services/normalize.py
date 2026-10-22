@@ -21,6 +21,47 @@ def _format_iso_utc(epoch: float) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
+# QUIC versions we accept as evidence that a UDP datagram really is QUIC:
+# version negotiation (0), QUIC v1 (1), QUIC v2 (0x6b3343cf).
+_QUIC_KNOWN_VERSIONS = {0x00000000, 0x00000001, 0x6B3343CF}
+
+
+def _looks_like_dns(payload: bytes) -> bool:
+    """Check that a payload really looks like a DNS message.
+
+    The port number alone is not evidence, so the message header is validated:
+    the reserved Z bits must be clear and the section counts must be plausible.
+    """
+    if len(payload) < 12:
+        return False
+    flags = struct.unpack("!H", payload[2:4])[0]
+    if flags & 0x0070:  # reserved Z bits must be zero
+        return False
+    qdcount = struct.unpack("!H", payload[4:6])[0]
+    ancount = struct.unpack("!H", payload[6:8])[0]
+    nscount = struct.unpack("!H", payload[8:10])[0]
+    arcount = struct.unpack("!H", payload[10:12])[0]
+    return qdcount <= 4 and ancount <= 64 and nscount <= 4 and arcount <= 8
+
+
+def _looks_like_quic(payload: bytes) -> tuple[bool, Optional[str]]:
+    """Detect a QUIC long header.
+
+    Returns ``(is_quic, version)``. A UDP port of 443 is deliberately NOT accepted
+    as evidence: port numbers alone never prove a protocol.
+    """
+    if len(payload) < 5:
+        return False, None
+    if not payload[0] & 0x80:  # long header form has the high bit set
+        return False, None
+    version = struct.unpack("!I", payload[1:5])[0]
+    if version in _QUIC_KNOWN_VERSIONS:
+        return True, f"0x{version:08x}"
+    if version & 0xFFFFFF00 == 0xFF000000:  # draft versions (0xff0000XX)
+        return True, f"0x{version:08x}"
+    return False, None
+
+
 def _extract_tls_sni(payload: bytes) -> tuple[Optional[str], Optional[str]]:
     """Parse TLS record header for version and ClientHello SNI server_name."""
     if len(payload) < 5:
@@ -104,6 +145,7 @@ def normalize_raw_frames(
         http_status_code: Optional[int] = None
         tls_version: Optional[str] = None
         server_name: Optional[str] = None
+        quic_version: Optional[str] = None
         is_encrypted = False
         info: Optional[str] = None
 
@@ -184,15 +226,21 @@ def normalize_raw_frames(
                         udp_len = struct.unpack("!H", data[p_offset + 4 : p_offset + 6])[0]
                         payload = data[p_offset + 8 : p_offset + udp_len]
 
-                        if source_port == 53 or destination_port == 53:
+                        if (source_port == 53 or destination_port == 53) and _looks_like_dns(payload):
                             app_proto = "DNS"
                             protocols.append("dns")
-                        elif (source_port == 443 or destination_port == 443) or (len(payload) >= 5 and (payload[0] & 0x80)):
-                            app_proto = "QUIC"
-                            is_encrypted = True
-                            protocols.append("quic")
                         else:
-                            app_proto = "UDP"
+                            quic_detected, quic_ver = _looks_like_quic(payload)
+                            if quic_detected:
+                                app_proto = "QUIC"
+                                is_encrypted = True
+                                protocols.append("quic")
+                                quic_version = quic_ver
+                            elif source_port == 443 or destination_port == 443:
+                                # Honesty rule: UDP/443 on its own proves nothing.
+                                app_proto = "UDP"
+                            else:
+                                app_proto = "UDP"
                 else:
                     transport_proto = "OTHER"
                     app_proto = "OTHER"
@@ -222,11 +270,20 @@ def normalize_raw_frames(
                     protocols.append("udp")
                     if len(data) >= p_offset + 8:
                         source_port, destination_port = struct.unpack("!HH", data[p_offset : p_offset + 4])
-                        if source_port == 53 or destination_port == 53:
+                        udp_len = struct.unpack("!H", data[p_offset + 4 : p_offset + 6])[0]
+                        payload = data[p_offset + 8 : p_offset + udp_len]
+                        if (source_port == 53 or destination_port == 53) and _looks_like_dns(payload):
                             app_proto = "DNS"
                             protocols.append("dns")
                         else:
-                            app_proto = "UDP"
+                            quic_detected, quic_ver = _looks_like_quic(payload)
+                            if quic_detected:
+                                app_proto = "QUIC"
+                                is_encrypted = True
+                                protocols.append("quic")
+                                quic_version = quic_ver
+                            else:
+                                app_proto = "UDP"
                 else:
                     transport_proto = "OTHER"
                     app_proto = "OTHER"
@@ -259,6 +316,7 @@ def normalize_raw_frames(
             http_status_code=http_status_code,
             tls_version=tls_version,
             server_name=server_name,
+            quic_version=quic_version,
             inter_packet_interval_seconds=interval,
             is_encrypted=is_encrypted,
             protocols=protocols,
@@ -363,7 +421,7 @@ def normalize_tshark_rows(
             elif "quic" in protocols or ws_proto in ("QUIC", "HTTP3"):
                 app_proto = "QUIC"
                 is_encrypted = True
-            elif "dns" in protocols or ws_proto == "DNS" or src_port == 53 or dst_port == 53:
+            elif "dns" in protocols or ws_proto == "DNS":
                 app_proto = "DNS"
                 is_encrypted = False
             elif trans_proto in ("ARP", "ICMP", "ICMPv6"):

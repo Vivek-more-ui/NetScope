@@ -58,7 +58,7 @@ def load_csv(path: str | Path) -> tuple[list[NormalizedPacket], list[str]]:
 
     reader = csv.DictReader(lines, delimiter=delimiter)
     if not reader.fieldnames:
-        return [], []
+        return [], ["CSV file has no header row."]
 
     # Build key mapping
     col_map: dict[str, str] = {}
@@ -99,10 +99,20 @@ def load_csv(path: str | Path) -> tuple[list[NormalizedPacket], list[str]]:
     warnings: list[str] = []
     prev_epoch: Optional[float] = None
 
+    if "length" not in col_map:
+        warnings.append(
+            "CSV has no length column; byte totals for this capture are reported as 0."
+        )
+
     for idx, row in enumerate(reader, start=1):
         try:
             fn_val = row.get(col_map.get("frame_number", ""))
-            frame_number = int(fn_val) if fn_val and fn_val.isdigit() else idx
+            if not fn_val or not fn_val.isdigit():
+                warnings.append(
+                    f"CSV row {idx}: missing or unusable frame_number, the row was skipped."
+                )
+                continue
+            frame_number = int(fn_val)
 
             t_val = row.get(col_map.get("timestamp", "")) or ""
             timestamp_str, epoch = _parse_time(t_val, prev_epoch)
@@ -112,7 +122,12 @@ def load_csv(path: str | Path) -> tuple[list[NormalizedPacket], list[str]]:
                 interval = round(epoch - prev_epoch, 6)
             prev_epoch = epoch
 
-            len_val = row.get(col_map.get("length", "")) or "0"
+            len_val = row.get(col_map.get("length", "")) or ""
+            if "length" in col_map and not len_val.isdigit():
+                warnings.append(
+                    f"CSV row {idx}: missing or unusable frame length, the row was skipped."
+                )
+                continue
             captured_frame_length = int(len_val) if len_val.isdigit() else 0
 
             ip_len_val = row.get(col_map.get("ip_packet_length", "")) or None
@@ -196,5 +211,8 @@ def load_csv(path: str | Path) -> tuple[list[NormalizedPacket], list[str]]:
             packets.append(packet)
         except Exception as exc:
             warnings.append(f"CSV row {idx}: {exc}")
+
+    if not packets and not warnings:
+        warnings.append("CSV contained no data rows.")
 
     return packets, warnings

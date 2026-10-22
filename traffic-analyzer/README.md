@@ -149,7 +149,7 @@ Measured on this machine (Linux, Python 3.12.3, Node 18.19.1, TShark 4.2.2):
 
 | Check | Command | Result |
 |---|---|---|
-| Backend suite | `backend/.venv/bin/pytest` | **264 passed, 1 xfailed** (265 collected) |
+| Backend suite | `backend/.venv/bin/pytest` | **321 passed, 1 xfailed** (322 collected) |
 | Frontend suite | `frontend/npm test` | **35 passed** (5 files) |
 | Type check | `frontend/npm run lint` (`tsc --noEmit`) | **0 errors** |
 | Production build | `frontend/npm run build` | **built in 3.5 s** (842 modules) |
@@ -184,7 +184,12 @@ TShark-dependent tests skip themselves when the binary is missing.
   as JSONL. Restarting the server reloads them; deleting the data directory loses them.
 * **The built-in reader is a fallback.** TShark is used whenever it is installed because
   it dissects many more protocols; the pure-Python reader covers classic pcap and
-  pcapng with Ethernet/IPv4/IPv6/TCP/UDP/ICMP/ARP.
+  pcapng with Ethernet/IPv4/IPv6/TCP/UDP/ICMP/ARP. On the same 6 016-packet capture
+  both paths agree on the packet count, the byte total, the duration and the HTTP/DNS
+  counts; the built-in reader recognises fewer TLS records (352 instead of 677) because
+  it can only see a TLS record at the start of a TCP segment. A capture analysed
+  without TShark carries the warning *"TShark was not usable for this capture; the
+  built-in reader was used instead."*
 * **Direction hints are best effort** (`direction_hint`), never ground truth.
 * `docs/SECURITY.md` documents the threat model and the controls that are **not**
   implemented.

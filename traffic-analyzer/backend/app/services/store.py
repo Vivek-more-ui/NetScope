@@ -76,6 +76,12 @@ class AnalysisStore:
         self.persist(analysis)
         return analysis
 
+    def put(self, analysis: Analysis) -> Analysis:
+        with self._lock:
+            self._analyses[analysis.analysis_id] = analysis
+        self.persist(analysis)
+        return analysis
+
     def get(self, analysis_id: str) -> Optional[Analysis]:
         with self._lock:
             return self._analyses.get(analysis_id)

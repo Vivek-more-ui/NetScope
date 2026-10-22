@@ -21,6 +21,8 @@ backend/data/
 *.cap
 !backend/tests/fixtures/*.pcap
 !backend/tests/fixtures/*.pcapng
+!sample_captures/*.pcap
+!sample_captures/*.pcapng
 
 # Editors / OS
 .DS_Store

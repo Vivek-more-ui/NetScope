@@ -41,8 +41,8 @@ class NormalizedPacket(BaseModel):
     destination_ip: Optional[str] = None
     source_port: Optional[int] = Field(default=None, ge=0, le=65535)
     destination_port: Optional[int] = Field(default=None, ge=0, le=65535)
-    transport_protocol: Optional[str] = None
-    application_protocol: Optional[str] = None
+    transport_protocol: Optional[TransportProtocol] = None
+    application_protocol: Optional[ApplicationProtocol] = None
     captured_frame_length: int = Field(..., ge=0, description="Bytes on the wire for the frame")
     ip_packet_length: Optional[int] = Field(default=None, ge=0, description="IP datagram size in bytes")
     tcp_flags: Optional[str] = None
@@ -142,6 +142,10 @@ class PacketPage(BaseModel):
 class ProtocolPage(BaseModel):
     items: list[ProtocolCount]
     total: int = Field(..., ge=0)
+    transport_items: list[ProtocolCount] = Field(
+        default_factory=list,
+        description="Transport-layer distribution (TCP/UDP/ICMP/...); items holds the application view",
+    )
 
 
 class HostPage(BaseModel):

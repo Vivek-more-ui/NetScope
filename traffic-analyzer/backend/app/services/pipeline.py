@@ -168,12 +168,19 @@ def load_any(path: str | Path, prefer_tshark: bool = True) -> CaptureLoadResult:
     return load_capture(path, prefer_tshark=prefer_tshark)
 
 
-def store_upload(source_path: str | Path, target_dir: str | Path) -> Path:
-    """Copy an uploaded file into the uploads directory and return the new path."""
+def store_upload(
+    source_path: str | Path, target_dir: str | Path, original_name: Optional[str] = None
+) -> Path:
+    """Copy an uploaded file into the uploads directory and return the new path.
+
+    ``original_name`` keeps the name the user uploaded under, so the stored file and
+    every error message refer to the file the user recognises. The name is reduced to
+    its basename, so it can never escape ``target_dir``.
+    """
     source = Path(source_path)
     target_dir = Path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = os.path.basename(source.name) or "upload"
+    safe_name = os.path.basename(original_name or source.name) or "upload"
     destination = target_dir / safe_name
     counter = 1
     while destination.exists():

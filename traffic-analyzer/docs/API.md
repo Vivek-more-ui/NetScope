@@ -202,7 +202,12 @@ Response: `{ "items": [NormalizedPacket, ...], "total": 1204, "limit": 100, "off
 
 ### `GET /api/analysis/{analysis_id}/protocols`
 
-Response: `{ "items": [ { "protocol": "HTTP", "packets": 300, "bytes": 210000, "percentage": 24.92 }, ... ], "total": 6 }`
+Response: `{ "items": [ { "protocol": "HTTP", "packets": 300, "bytes": 210000, "percentage": 24.92 }, ... ], "total": 6, "transport_items": [ { "protocol": "TCP", "packets": 1200, "bytes": 900000, "percentage": 99.75 }, ... ] }`
+
+* `items` is the **application**-layer distribution (HTTP, TLS, QUIC, DNS, …). Each packet
+  is counted once, so the packet counts sum to the analysis packet count.
+* `transport_items` is the **transport**-layer distribution (TCP, UDP, ICMP, …). It is an
+  additive field; clients that only need the application view can ignore it.
 
 ### `GET /api/analysis/{analysis_id}/hosts`
 

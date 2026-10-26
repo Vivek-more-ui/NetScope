@@ -40,6 +40,8 @@ jobs:
 
       - name: Build frontend
         working-directory: traffic-analyzer/frontend
+        env:
+          VITE_API_BASE_URL: https://netscope-1-amk7.onrender.com
         run: npm run build
 
       - name: Upload Pages artifact

@@ -1,0 +1,10 @@
+{
+  "analysis_id": "38d7287648e64141a8de3b397666cbd5",
+  "source_file": "demo-fixture.pcapng",
+  "source_kind": "pcapng",
+  "created_at": "2026-10-22T00:16:13.674805Z",
+  "packet_count": 6016,
+  "total_bytes": 5901040,
+  "warnings": [],
+  "source_path": "/home/abhaysawant/Desktop/Seminar-Information-Bot/traffic-analyzer/backend/data/uploads/tmpct7c3w_a.pcapng"
+}

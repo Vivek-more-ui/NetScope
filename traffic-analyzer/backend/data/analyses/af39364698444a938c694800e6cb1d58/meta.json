@@ -1,0 +1,10 @@
+{
+  "analysis_id": "af39364698444a938c694800e6cb1d58",
+  "source_file": "demo_traffic.pcap",
+  "source_kind": "pcap",
+  "created_at": "2026-10-22T02:27:32.898692Z",
+  "packet_count": 6,
+  "total_bytes": 574,
+  "warnings": [],
+  "source_path": "/home/abhaysawant/Desktop/Seminar-Information-Bot/traffic-analyzer/sample_captures/demo_traffic.pcap"
+}

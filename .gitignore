@@ -1,8 +1,68 @@
-node_modules/
-build/
-dist/
-coverage/
+# OS and editor files
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# Project metadata and local tooling
+.kilo/
+.run/
+
+# Node / frontend artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+.cache/
+**/.cache/
+.parcel-cache/
+**/.parcel-cache/
+*.tsbuildinfo
+
+# Python / backend artifacts
+**/.venv/
+venv/
+**/venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+**/htmlcov/
+
+# Logs and temporary output
 *.log
-.env*
+**/*.log
+*.pid
+*.tmp
+
+# Secrets and credential files
+.env
+.env.*
 !.env.example
+*.pem
+*.key
+*.crt
+*.p12
+
+# Local generated output
+frontend/dist/
+**/frontend/dist/
+**/dist/
+**/build/

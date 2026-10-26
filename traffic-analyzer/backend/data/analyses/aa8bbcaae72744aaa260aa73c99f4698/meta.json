@@ -1,0 +1,10 @@
+{
+  "analysis_id": "aa8bbcaae72744aaa260aa73c99f4698",
+  "source_file": "capture-7b2f64efe3884660a5537652a3939c9e.pcapng",
+  "source_kind": "live",
+  "created_at": "2026-10-22T00:18:41.099678Z",
+  "packet_count": 159,
+  "total_bytes": 26508,
+  "warnings": [],
+  "source_path": "/home/abhaysawant/Desktop/Seminar-Information-Bot/traffic-analyzer/backend/data/captures/capture-7b2f64efe3884660a5537652a3939c9e.pcapng"
+}

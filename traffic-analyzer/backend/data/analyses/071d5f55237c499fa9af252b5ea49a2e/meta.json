@@ -1,0 +1,10 @@
+{
+  "analysis_id": "071d5f55237c499fa9af252b5ea49a2e",
+  "source_file": "demo_traffic.csv",
+  "source_kind": "csv",
+  "created_at": "2026-10-22T01:58:26.813162Z",
+  "packet_count": 6,
+  "total_bytes": 574,
+  "warnings": [],
+  "source_path": "/home/abhaysawant/Desktop/Seminar-Information-Bot/traffic-analyzer/sample_captures/demo_traffic.csv"
+}
